@@ -30,11 +30,16 @@ source .venv/bin/activate
 ### 2. Install required packages
 
 ```bash
+pip install -r requirements.txt
+```
+
+Or install manually:
+
+```bash
 pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ --extra-index-url https://pypi.org/simple onnxruntime-winml 
 pip install onnxruntime-genai-winml==0.11.2
 pip install wasdk-Microsoft.Windows.AI.MachineLearning[all]
 pip install winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap
-
 ```
 
 ## Usage
@@ -49,6 +54,12 @@ Optionally combine with `--ep_path` to provide a specific provider library path:
 
 ```bash
 python model-chat.py -m <model_path> --use_winml --ep_path "C:\path\to\onnxruntime_providers_openvino_plugin.dll"
+```
+
+### Example: Chat with Qwen 2.5 1.5B on OpenVINO GPU
+
+```bash
+python model-chat.py  --use_winml -m qwen2.5-1.5b-openvino-gpu:2
 ```
 
 
