@@ -36,9 +36,9 @@ pip install -r requirements.txt
 Or install manually:
 
 ```bash
-pip install --pre --index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/ --extra-index-url https://pypi.org/simple onnxruntime-winml 
+pip install onnxruntime==1.23.2
 pip install onnxruntime-genai-winml==0.11.2
-pip install wasdk-Microsoft.Windows.AI.MachineLearning[all]
+pip install wasdk-Microsoft.Windows.AI.MachineLearning[all]==1.8.260209005
 pip install winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap
 ```
 
@@ -59,7 +59,7 @@ python model-chat.py -m <model_path> --use_winml --ep_path "C:\path\to\onnxrunti
 ### Example: Chat with Qwen 2.5 1.5B on OpenVINO GPU
 
 ```bash
-python model-chat.py  --use_winml -m qwen2.5-1.5b-openvino-gpu:2
+python model-chat.py  --use_winml -m %USERPROFILE%\.foundry\cache\Microsoft\qwen2.5-1.5b-instruct-openvino-gpu-2\v2
 ```
 
 

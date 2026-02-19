@@ -1,8 +1,5 @@
---pre
---index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/pypi/simple/
---extra-index-url https://pypi.org/simple
 
-onnxruntime-winml
+onnxruntime==1.23.2
 onnxruntime-genai-winml==0.11.2
 wasdk-Microsoft.Windows.AI.MachineLearning[all]
 winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap
