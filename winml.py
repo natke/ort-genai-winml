@@ -27,12 +27,10 @@ class WinML:
         self._win_app_sdk_handle.__enter__()
         catalog = winml.ExecutionProviderCatalog.get_default()
         self._providers = catalog.find_all_providers()
-        self._ep_paths : dict[str, str] = {}
+        self._ep_info : dict[str, object] = {}  # name -> provider object (not yet ensured ready)
+        self._ep_paths : dict[str, str] = {}    # name -> library_path (populated on demand)
         for provider in self._providers:
-            provider.ensure_ready_async().get()
-            if provider.library_path == '':
-                continue
-            self._ep_paths[provider.name] = provider.library_path
+            self._ep_info[provider.name] = provider
         self._registered_eps : dict[str, list[str]] = {"onnxruntime": [], "onnxruntime_genai": []}
 
     def __del__(self):
@@ -50,7 +48,24 @@ class WinML:
         if dll_path.exists():
             dll_path.unlink()
 
-    def register_execution_providers(self, ort=True, ort_genai=False) -> dict[str, list[str]]:
+    def _ensure_ready(self, name: str) -> str | None:
+        """Ensure a single EP is ready and return its library path (or None if unavailable).
+        
+        Only calls ensure_ready_async for the specific EP requested, avoiding
+        loading DLLs for unrelated EPs into the process.
+        """
+        if name in self._ep_paths:
+            return self._ep_paths[name]
+        provider = self._ep_info.get(name)
+        if provider is None:
+            return None
+        provider.ensure_ready_async().get()
+        if provider.library_path == '':
+            return None
+        self._ep_paths[name] = provider.library_path
+        return provider.library_path
+
+    def register_execution_providers(self, ort=True, ort_genai=False, providers: list[str] | None = None) -> dict[str, list[str]]:
         modules = []
         if ort:
             import onnxruntime
@@ -58,29 +73,46 @@ class WinML:
         if ort_genai:
             import onnxruntime_genai
             modules.append(onnxruntime_genai)
-        for name, path in self._ep_paths.items():
+        # Determine which EPs to register
+        ep_names = list(providers) if providers is not None else list(self._ep_info.keys())
+        for name in ep_names:
+            path = self._ensure_ready(name)
+            if path is None:
+                continue
+            version = self._get_version_from_path(path)
             for module in modules:
                 if name not in self._registered_eps[module.__name__]:
                     try:
                         module.register_execution_provider_library(name, path)
                         self._registered_eps[module.__name__].append(name)
+                        ver_str = f" v{version}" if version else ""
+                        print(f"Registered {name}{ver_str} with {module.__name__}")
                     except Exception as e:
                         print(f"Failed to register execution provider {name}: {e}", file=sys.stderr)
                         traceback.print_exc()
         return self._registered_eps
 
+    @staticmethod
+    def _get_version_from_path(path: str) -> str | None:
+        """Extract version from a WindowsApps package path, e.g. '1.8.63.0' from
+        '...MicrosoftCorporationII.WinML.Intel.OpenVINO.EP.1.8_1.8.63.0_x64__...'"""
+        import re
+        m = re.search(r'_(\d+\.\d+\.\d+\.\d+)_', path)
+        return m.group(1) if m else None
 
-def register_execution_providers(ort=True, ort_genai=False) -> dict[str, list[str]]:
+
+def register_execution_providers(ort=True, ort_genai=False, providers: list[str] | None = None) -> dict[str, list[str]]:
     """Register WinML execution providers for ONNX Runtime and ONNX Runtime GenAI.
 
     Args:
         ort (bool): Whether to register for ONNX Runtime.
         ort_genai (bool): Whether to register for ONNX Runtime GenAI.
+        providers (list[str] | None): Only register these providers by name. None means all.
 
     Returns:
         dict[str, list[str]]: Dictionary of registered execution provider names by module.
     """
-    return WinML().register_execution_providers(ort=ort, ort_genai=ort_genai)
+    return WinML().register_execution_providers(ort=ort, ort_genai=ort_genai, providers=providers)
 
 
 def add_ep_for_device(session_options, ep_name, device_type, ep_options=None):

@@ -21,7 +21,18 @@ def set_logger(inputs: bool = True, outputs: bool = True) -> None:
     """
     og.set_log_options(enabled=True, model_input_values=inputs, model_output_values=outputs)
 
-def register_ep(ep: str, ep_path: str, use_winml: bool) -> None:
+def set_ort_log_level(level: str) -> None:
+    """
+    Enable ORT session logging at the given severity level.
+
+    Args:
+        level (str): One of VERBOSE, INFO, WARNING, ERROR, FATAL
+    Returns:
+        None
+    """
+    og.set_log_options(enabled=True, model_input_values=False, model_output_values=False)
+
+def register_ep(ep: str, ep_path: str, use_winml: bool, providers: list[str] | None = None) -> None:
     """
     Register execution provider if path is provided or via Windows ML
 
@@ -29,9 +40,20 @@ def register_ep(ep: str, ep_path: str, use_winml: bool) -> None:
         ep (str): Name of execution provider
         ep_path (str): Path to execution provider to register
         use_winml (bool): Use Windows ML to register execution providers
+        providers (list[str] | None): Only register these WinML providers by name. None means all.
     Returns:
         None
     """
+
+    # If ep_path is provided with follow_config, infer the EP from the DLL name
+    if ep == "follow_config" and ep_path:
+        ep_path_lower = ep_path.lower()
+        if "openvino" in ep_path_lower:
+            ep = "openvino"
+        elif "tensorrt" in ep_path_lower or "nvidia" in ep_path_lower:
+            ep = "NvTensorRtRtx"
+        elif "cuda" in ep_path_lower:
+            ep = "cuda"
 
     print(f"Registering execution provider: {ep}")
 
@@ -45,7 +67,8 @@ def register_ep(ep: str, ep_path: str, use_winml: bool) -> None:
             return
 
         try:
-            print(winml.register_execution_providers(ort=False, ort_genai=True))
+            print(f"Registering WinML execution providers...{providers if providers else 'all'}")
+            print(winml.register_execution_providers(ort=False, ort_genai=True, providers=providers))
         except ImportError as e:
             # Missing Python packages: winrt-runtime, winui3, or onnxruntime_genai
             print(f"Missing required Python package for WinML: {e}")
@@ -79,14 +102,16 @@ def register_ep(ep: str, ep_path: str, use_winml: bool) -> None:
         og.register_execution_provider_library("CUDAExecutionProvider", ep_path)
     elif ep == "NvTensorRtRtx":
         og.register_execution_provider_library("NvTensorRTRTXExecutionProvider", ep_path)
+    elif ep == "openvino":
+        og.register_execution_provider_library("OpenVINOExecutionProvider", ep_path)
     else:
         print(f"Warning: EP registration not supported for {ep}")
-        print("Only 'cuda' and 'NvTensorRtRtx' support plug-in libraries. Use Windows ML via '--use_winml' to register EPs.")
+        print("Only 'cuda', 'NvTensorRtRtx', and 'openvino' support plug-in libraries. Use Windows ML via '--use_winml' to register EPs.")
         return
 
     print(f"Registered {ep} successfully!")
 
-def get_config(path: str, ep: str, ep_options: dict[str, str] = {}, search_options: dict[str, int] = {}) -> og.Config:
+def get_config(path: str, ep: str, ep_options: dict[str, str] = {}, search_options: dict[str, int] = {}, ort_log_level: str | None = None) -> og.Config:
     """
     Get og.Config object and set EP-specific and search-specific options inside it
 
@@ -95,12 +120,14 @@ def get_config(path: str, ep: str, ep_options: dict[str, str] = {}, search_optio
         ep (str): Name of execution provider to set
         ep_options (dict[str, str]): Map of EP-specific option names and their values
         search_options (dict[str, int]): Map of search-specific option names and their values
+        ort_log_level (str | None): ORT session log severity level (VERBOSE, INFO, WARNING, ERROR, FATAL). None leaves default.
     Returns:
         og.Config: ORT GenAI config object with all options set
     """
     # Create config with EP
     # - If follow_config, then use the default EP stored inside the GenAI config.
     # - Otherwise, override the stored EP by clearing all providers and appending the desired one.
+    path = os.path.expandvars(os.path.expanduser(path))
     config = og.Config(path)
     if ep != "follow_config":
         config.clear_providers()
@@ -124,6 +151,17 @@ def get_config(path: str, ep: str, ep_options: dict[str, str] = {}, search_optio
     # Set any search-specific options that need to be known before constructing an og.Model object
     # Otherwise they can be set with params.set_search_options(**search_options)
     config.overlay(json.dumps({"search": search_options}))
+
+    # Set ORT session log level if requested
+    if ort_log_level is not None:
+        level_map = {"VERBOSE": 0, "INFO": 1, "WARNING": 2, "ERROR": 3, "FATAL": 4}
+        config.overlay(json.dumps({
+            "model": {"decoder": {"session_options": {
+                "log_severity_level": level_map[ort_log_level],
+                "log_verbosity_level": 10
+            }}}
+        }))
+
     return config
 
 def get_search_options(args: argparse.Namespace):
