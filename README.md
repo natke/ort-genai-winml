@@ -40,7 +40,7 @@ Or install manually:
 pip install onnxruntime==1.23.2
 pip install onnxruntime-genai-winml==0.11.2
 pip install wasdk-Microsoft.Windows.AI.MachineLearning[all]
-pip install winui3.microsoft.windows.applicationmodel.dynamicdependency.bootstrap
+pip install wasdk-Microsoft.Windows.ApplicationModel.DynamicDependency.Bootstrap
 ```
 
 ## Usage
