@@ -103,7 +103,7 @@ python model-chat.py -e openvino -m <model_path> --ep_path "C:\path\to\onnxrunti
 
 ### Comparing OpenVINO EP versions with verbose logging
 
-The `msix/OpenVINO-EP/x64/Release/` folder contains OpenVINO EP packages for testing:
+Assumes the `msix/OpenVINO-EP/x64/Release/` folder contains OpenVINO EP packages for testing:
 
 | File | Description |
 |---|---|
