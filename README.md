@@ -14,7 +14,9 @@ End-to-end AI chat examples using [ONNX Runtime GenAI](https://github.com/micros
 ## Prerequisites
 
 - Python 3.10+
-- An ONNX model folder containing `genai_config.json` and the model files
+- An ONNX model folder containing `genai_config.json` and the model files e.g.
+   - winget install Microsoft.FoundryLocal
+   - foundry model download qwen2.5-1.5b-instruct-openvino-gpu:2
 
 ## Installation
 
@@ -108,6 +110,8 @@ The `msix/OpenVINO-EP/x64/Release/` folder contains OpenVINO EP packages for tes
 | `OpenVINOEP.1.8.61.0.msix` | OpenVINO EP 1.8.61 (working on NVIDIA GPU systems) |
 | `OpenVINOEP.1.8.63.0.msix` | OpenVINO EP 1.8.63 (broken on NVIDIA GPU systems) |
 
+> **Note:** The bug with OpenVINO EP 1.8.63 on NVIDIA GPU systems does not reproduce with `onnxruntime-genai-winml` version 0.12.0.
+
 Check the currently installed version:
 
 ```powershell
@@ -162,6 +166,32 @@ Get-Content ort-ov-1.8.63.log
 `test_ort_ep.py` registers an EP via WinML into the pip `onnxruntime` package (not ORT GenAI) and creates an `InferenceSession` to verify the EP loads and is active.
 
 > **Note:** `onnxruntime-genai-winml` statically links its own ORT runtime. The pip `onnxruntime` package is a separate runtime, so results here may differ from `model-chat.py`.
+
+#### Diagnose the EP 1.8.63 ov_device bug
+
+`test_ort_ep.py` can diagnose the root cause of the EP 1.8.63 bug on NVIDIA GPU systems. Use `--device_type GPU --skip_session` to check the `ov_device` metadata without loading a model:
+
+```powershell
+python test_ort_ep.py -m $env:USERPROFILE\.foundry\cache\Microsoft\qwen2.5-1.5b-instruct-openvino-gpu-2\v2 --device_type GPU --skip_session
+```
+
+With EP 1.8.61 (working), the diagnosis shows an exact match:
+```
+  OpenVINOExecutionProvider: ov_device='GPU', plugin=1.1.0+bc991700b, hardware=GPU
+    device_type='GPU' vs ov_device='GPU': exact=MATCH
+    ✓ ov_device exactly matches — both 0.11.2 and 0.12.0 will work.
+```
+
+With EP 1.8.63 (broken on 0.11.2), the diagnosis flags the mismatch:
+```
+  OpenVINOExecutionProvider: ov_device='GPU.0', plugin=1.2.1+e7aaa28, hardware=GPU
+    device_type='GPU' vs ov_device='GPU.0': exact=MISMATCH
+    ⚠ AFFECTED by EP 1.8.63 bug: ov_device 'GPU.0' contains 'GPU' but is not an exact match.
+      onnxruntime-genai-winml 0.11.2 will FAIL (exact match in model.cpp).
+      onnxruntime-genai-winml 0.12.0 will PASS (substring match in interface.cpp).
+```
+
+> **Note:** This script diagnoses the root cause but does not reproduce the actual crash. The crash occurs in `onnxruntime-genai-winml`'s statically-linked ORT (model.cpp), not in the pip `onnxruntime` package. Use `model-chat.py` to reproduce the crash — see [BUG_ANALYSIS.md](BUG_ANALYSIS.md) for full details.
 
 #### Basic usage
 

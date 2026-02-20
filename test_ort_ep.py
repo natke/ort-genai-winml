@@ -11,9 +11,14 @@ This script tests both registration approaches:
   1. register_execution_provider_library() — the traditional approach
   2. get_ep_devices() / add_provider_for_devices() — the newer device-based API
 
+It also diagnoses the EP 1.8.63 ov_device mismatch bug: EP 1.8.63 reports
+ov_device='GPU.0' instead of 'GPU', which causes onnxruntime-genai-winml
+0.11.2's model.cpp exact-match to fail. Use --device_type GPU to check.
+
 Usage:
     python test_ort_ep.py -m <model_folder>
     python test_ort_ep.py -m <model_folder> --device_type GPU
+    python test_ort_ep.py -m <model_folder> --skip_session
     python test_ort_ep.py -m <model_folder> --onnx_file model.onnx
 """
 
@@ -104,6 +109,7 @@ def main():
     print("Step 3: Check EP devices via get_ep_devices()")
     print("=" * 60)
     ep_device_match = None
+    ep_devices_list = []  # collect for diagnosis
     try:
         ep_devices = ort.get_ep_devices()
         if ep_devices:
@@ -115,13 +121,48 @@ def main():
                         ep_device_match = epd  # take first match
                     if args.device_type and str(epd.device.type).endswith(args.device_type.upper()):
                         ep_device_match = epd
-                print(f"  {epd.ep_name} on {epd.device.type}{marker}")
+                ep_meta = getattr(epd, 'ep_metadata', {})
+                print(f"  {epd.ep_name} on {epd.device.type}  ep_metadata={ep_meta}{marker}")
+                ep_devices_list.append(epd)
         else:
             print("  (no EP devices returned)")
     except AttributeError:
         print("  ort.get_ep_devices() not available in this ORT version")
     except Exception as e:
         print(f"  get_ep_devices() failed: {e}")
+
+    # ── Diagnosis: check ov_device vs device_type match ────────────────────
+    #
+    # EP 1.8.63 changed ov_device from "GPU" to "GPU.0". This breaks
+    # onnxruntime-genai-winml 0.11.2's model.cpp exact string match.
+    # See BUG_ANALYSIS.md for full details.
+    #
+    if ep_devices_list:
+        print()
+        print("  ── ov_device diagnosis ──")
+        target_devices = [epd for epd in ep_devices_list if epd.ep_name == ep_name]
+        if target_devices:
+            for epd in target_devices:
+                ep_meta = getattr(epd, 'ep_metadata', {})
+                ov_device = ep_meta.get('ov_device', '(not set)')
+                ep_version = ep_meta.get('version', '(unknown)')
+                hw_type = str(epd.device.type).rsplit('.', 1)[-1]
+                print(f"  {ep_name}: ov_device='{ov_device}', plugin={ep_version}, hardware={hw_type}")
+                if args.device_type:
+                    exact_match = (ov_device == args.device_type)
+                    substr_match = (args.device_type in ov_device) if ov_device != '(not set)' else False
+                    status = "MATCH" if exact_match else "MISMATCH"
+                    print(f"    device_type='{args.device_type}' vs ov_device='{ov_device}': exact={status}")
+                    if not exact_match and substr_match:
+                        print(f"    ⚠ AFFECTED by EP 1.8.63 bug: ov_device '{ov_device}' contains '{args.device_type}' but is not an exact match.")
+                        print(f"      onnxruntime-genai-winml 0.11.2 will FAIL (exact match in model.cpp).")
+                        print(f"      onnxruntime-genai-winml 0.12.0 will PASS (substring match in interface.cpp).")
+                    elif exact_match:
+                        print(f"    ✓ ov_device exactly matches — both 0.11.2 and 0.12.0 will work.")
+        else:
+            print(f"  No devices found for {ep_name}")
+        if not args.device_type:
+            print(f"  (Use --device_type GPU to check for ov_device mismatch)")
 
     if args.skip_session:
         print("\n--skip_session specified, stopping here.")

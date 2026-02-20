@@ -3,4 +3,6 @@ __pycache__
 .vscode
 msix
 *.log
+BUG_ANALYSIS.md
+
 
