@@ -1,4 +1,4 @@
-# ORT GenAI Samples
+# ONNX Runtime GenAI / model loading / EP version tests
 
 End-to-end AI chat examples using [ONNX Runtime GenAI](https://github.com/microsoft/onnxruntime-genai).
 
